@@ -1,10 +1,13 @@
 package com.nikworkspace.AnyShare.service.interfaces;
 
-import com.nikworkspace.AnyShare.dto.SessionCreateRequest;
-import com.nikworkspace.AnyShare.dto.SessionCreateResponse;
+import com.nikworkspace.AnyShare.pojo.*;
 
 public interface SessionService {
-    public SessionCreateResponse createSession(SessionCreateRequest createRequest);
+    SessionCreateResponse createSession(SessionCreateRequest createRequest);
 
-    public SessionCreateResponse getSession(String roomCode);
+     SessionInfoResponse getSessionInfo(String roomCode);
+
+     SessionJoinResponse joinSession(String roomCode, JoinSessionRequest request);
+
+    void closeSession(String sessionId, String token);
 }

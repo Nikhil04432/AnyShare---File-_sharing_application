@@ -1,4 +1,4 @@
-package com.nikworkspace.AnyShare.dto;
+package com.nikworkspace.AnyShare.pojo;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
