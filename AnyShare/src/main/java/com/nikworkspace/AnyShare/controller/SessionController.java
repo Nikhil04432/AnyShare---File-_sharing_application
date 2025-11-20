@@ -1,5 +1,6 @@
 package com.nikworkspace.AnyShare.controller;
 
+import com.nikworkspace.AnyShare.constant.Constant;
 import com.nikworkspace.AnyShare.pojo.*;
 import com.nikworkspace.AnyShare.service.interfaces.SessionService;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +12,9 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @Slf4j
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/sessions")
+@RequestMapping(Constant.V_1_SESSIONS)
 public class SessionController {
+
 
     private final SessionService sessionService;
 

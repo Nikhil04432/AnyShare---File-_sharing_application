@@ -10,8 +10,6 @@ public class AnyShareApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(AnyShareApplication.class, args);
-        log.info("AnyShare Application Started Successfully.");
-        
     }
 
 }

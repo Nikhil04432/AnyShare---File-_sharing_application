@@ -25,6 +25,7 @@ public class Session {
 
     // Store connected peers (peerId -> Peer object)
     // ConcurrentHashMap because multiple threads might access
+    @Builder.Default
     private Map<String, com.nikworkspace.AnyShare.model.Peer> peers = new ConcurrentHashMap<>();
 
     /**

@@ -1,16 +1,19 @@
 package com.nikworkspace.AnyShare.service.impl;
 
-import com.nikworkspace.AnyShare.exception.SessionExpiredException;
-import com.nikworkspace.AnyShare.exception.SessionNotFoundException;
+import com.nikworkspace.AnyShare.constant.Constant;
+import com.nikworkspace.AnyShare.exception.*;
 import com.nikworkspace.AnyShare.pojo.*;
 import com.nikworkspace.AnyShare.modal.Session;
 import com.nikworkspace.AnyShare.enums.SessionStatus;
 import com.nikworkspace.AnyShare.service.interfaces.SessionService;
 import com.nikworkspace.AnyShare.util.CodeGenerator;
+import com.nikworkspace.AnyShare.util.JwtUtil;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
+import com.nikworkspace.AnyShare.model.Peer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
@@ -23,16 +26,16 @@ public class SessionServiceImpl implements SessionService {
 
     // In-memory storage for MVP (will use Redis later for production)
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
-
     // Quick lookup: roomCode -> sessionId
     private final ConcurrentHashMap<String, String> roomCodeToSessionId = new ConcurrentHashMap<>();
-
     private final CodeGenerator codeGenerator;
+    private final JwtUtil jwtUtil;
 
     // Configuration constants
-    private static final int SESSION_EXPIRY_MINUTES = 5;
-    private static final int MAX_PEERS = 2;
-    private static final String WS_URL = "ws://localhost:8080/signal"; // Will configure properly later
+
+    private static final int SESSION_EXPIRY_MINUTES = Constant.SESSION_EXPIRATION_MINUTES;
+    private static final int MAX_PEERS = Constant.MAX_PEERS_PER_SESSION;
+    private static final String WS_URL = Constant.WEBSOCKET_URL; // Will configure properly later
 
     @Override
     public SessionCreateResponse createSession(SessionCreateRequest request) {
@@ -165,30 +168,186 @@ public class SessionServiceImpl implements SessionService {
 
     @Override
     public SessionJoinResponse joinSession(String roomCode, JoinSessionRequest request) {
-        log.info("Joining session for roomCode={}", roomCode);
+        log.info("Processing join request for roomCode: {}, device: {}",
+                roomCode, request.getDeviceType());
 
-        // TODO: Implement actual session joining logic here.
+        // Step 1: Find sessionId using roomCode
+        String sessionId = roomCodeToSessionId.get(roomCode);
+
+        if (sessionId == null) {
+            log.warn("Room code not found: {}", roomCode);
+            throw new SessionNotFoundException(
+                    "Session with code " + roomCode + " does not exist or has expired"
+            );
+        }
+
+        // Step 2: Get the session
+        Session session = sessions.get(sessionId);
+
+        if (session == null) {
+            log.error("Inconsistent state: roomCode exists but session not found");
+            roomCodeToSessionId.remove(roomCode);
+            throw new SessionNotFoundException(
+                    "Session with code " + roomCode + " does not exist or has expired"
+            );
+        }
+
+        // Step 3: Check if session is expired
+        if (session.isExpired()) {
+            log.info("Session {} is expired. Cleaning up...", sessionId);
+            cleanupSession(session);
+            throw new SessionExpiredException(
+                    "Session with code " + roomCode + " has expired at " +
+                            formatDateTime(session.getExpiresAt())
+            );
+        }
+
+        // Step 4: Check if session is full
+        if (session.getPeersConnected() >= session.getMaxPeers()) {
+            log.warn("Session {} is full. Current peers: {}, Max: {}",
+                    sessionId, session.getPeersConnected(), session.getMaxPeers());
+            throw new SessionFullException(
+                    "Session is already full. Maximum " + session.getMaxPeers() + " peers allowed."
+            );
+        }
+
+        // Step 5: Check session status (must be WAITING)
+        if (session.getStatus() != SessionStatus.WAITING) {
+            log.warn("Session {} is not in WAITING state. Current status: {}",
+                    sessionId, session.getStatus());
+            throw new InvalidSessionStateException(
+                    "Session is no longer accepting connections. Current status: " + session.getStatus()
+            );
+        }
+
+        // Step 6: Create Peer object
+        String peerId = "peer-" + UUID.randomUUID().toString().substring(0, 8);
+
+        Peer peer = Peer.builder()
+                .peerId(peerId)
+                .sessionId(sessionId)
+                .deviceType(request.getDeviceType())
+                .userAgent(request.getUserAgent())
+                .joinedAt(LocalDateTime.now())
+                .build();
+
+        log.info("Created peer - ID: {}, Device: {}", peerId, request.getDeviceType());
+
+        // Step 7: Generate JWT token for this peer
+        String role = determineRole(session, peerId);
+        String token = jwtUtil.generateToken(peerId, sessionId, role);
+
+        log.info("Generated JWT token for peer: {}, role: {}", peerId, role);
+
+        // Step 8: Add peer to session (thread-safe operation)
+        session.getPeers().put(peerId, peer);
+
+        // Step 9: Update session status to CONNECTED
+        if (session.getPeersConnected() >= session.getMaxPeers()) {
+            session.setStatus(SessionStatus.CONNECTED);
+            log.info("Session {} status changed to CONNECTED. All peers joined.", sessionId);
+        }
+
+        // Step 10: Build and return response
+        SessionJoinResponse response = SessionJoinResponse.builder()
+                .sessionId(sessionId)
+                .peerId(peerId)
+                .wsUrl(WS_URL)
+                .token(token)
+                .expiresAt(formatDateTime(session.getExpiresAt()))
+                .build();
+
+        log.info("Peer {} successfully joined session {}", peerId, sessionId);
+
+        // print the data in session for debugging
+        log.info(" Current session peers: {}", session.getPeers().keySet().toArray());
 
 
-        // return dummy response for now
-//        SessionJoinResponse sessionJoinResponse = new SessionJoinResponse();
-//        sessionJoinResponse.setPeerId("dummy-peer-id-67890");
-//        sessionJoinResponse.setWsUrl("wss://dummy-websocket-url");
-//        sessionJoinResponse.setToken("dummy-jwt-token");
-//        sessionJoinResponse.setSessionId("dummy-session-id-12345");
-//        sessionJoinResponse.setExpiresAt("2024-12-31T23:59:59Z");
-//
-//        log.info(" Joined session successfully for PeerID: {}", sessionJoinResponse.getPeerId());
-
-        return null;
+        return response;
     }
+
+    /**
+     * Determine role of peer in session
+     * First peer = SENDER, second peer = RECEIVER
+     *
+     * @param session The session
+     * @param peerId The peer being added
+     * @return Role string (SENDER or RECEIVER)
+     */
+    private String determineRole(Session session, String peerId) {
+        // If this is the first peer, they're the SENDER
+        // If this is the second peer, they're the RECEIVER
+        return session.getPeers().isEmpty() ? "SENDER" : "RECEIVER";
+    }
+
+    // ... existing methods (cleanupSession, formatDateTime) ...
+
 
     @Override
     public void closeSession(String sessionId, String token) {
+        log.info("Processing close request for sessionId: {}", sessionId);
 
-        // TODO: Implement actual session closing logic here.
+        // Step 1: Validate JWT token and extract claims
+        Claims claims;
+        try {
+            claims = jwtUtil.validateToken(token);
+        } catch (InvalidTokenException e) {
+            log.warn("Invalid token provided for closing session {}: {}", sessionId, e.getMessage());
+            throw new UnauthorizedException("Invalid or expired token");
+        }
+
+        // Step 2: Extract peerId from token
+        String peerId = claims.getSubject();
+        String tokenSessionId = claims.get("sessionId", String.class);
+
+        log.debug("Token validated - peerId: {}, tokenSessionId: {}", peerId, tokenSessionId);
+
+        // Step 3: Verify token's sessionId matches the requested sessionId
+        if (!tokenSessionId.equals(sessionId)) {
+            log.warn("Session ID mismatch - Token: {}, Requested: {}", tokenSessionId, sessionId);
+            throw new UnauthorizedException(
+                    "Token does not belong to this session"
+            );
+        }
+
+        // Step 4: Find the session
+        Session session = sessions.get(sessionId);
+
+        if (session == null) {
+            log.warn("Session not found: {}", sessionId);
+            throw new SessionNotFoundException(
+                    "Session with id " + sessionId + " does not exist or has already been closed"
+            );
+        }
+
+        // Step 5: Verify the peer belongs to this session
+        if (!session.getPeers().containsKey(peerId)) {
+            log.warn("Peer {} is not part of session {}", peerId, sessionId);
+            throw new UnauthorizedException(
+                    "You are not authorized to close this session"
+            );
+        }
+
+        // Step 6: Mark session as CLOSED (before cleanup for logging)
+        session.setStatus(SessionStatus.CLOSED);
+
+        log.info("Session {} being closed by peer {}", sessionId, peerId);
+
+        // Step 7: Notify other peers (WebSocket notification - will implement later)
+        // For now, just log
+        session.getPeers().forEach((id, peer) -> {
+            if (!id.equals(peerId)) {
+                log.info("Would notify peer {} that session is closing", id);
+
+                // TODO: Send WebSocket message to peer when we implement WebSocket
 
 
-        log.info(" Session with ID: {} closed successfully.", sessionId);
+            }
+        });
+
+        // Step 8: Clean up the session
+        cleanupSession(session);
+
+        log.info("Session {} successfully closed by peer {}", sessionId, peerId);
     }
 }
