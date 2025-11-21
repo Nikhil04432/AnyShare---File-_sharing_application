@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.time.LocalDateTime;
 
@@ -20,5 +21,12 @@ public class Peer {
     private LocalDateTime joinedAt;     // When peer joined
 
     // WebSocket session will be added later when we implement WebSocket
-    // private WebSocketSession wsSession;
+    private transient WebSocketSession wsSession;  // transient = don't serialize
+
+    /**
+     * Check if peer has active WebSocket connection
+     */
+    public boolean isConnected() {
+        return wsSession != null && wsSession.isOpen();
+    }
 }

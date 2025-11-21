@@ -3,15 +3,15 @@ package com.nikworkspace.AnyShare.service.impl;
 import com.nikworkspace.AnyShare.constant.Constant;
 import com.nikworkspace.AnyShare.exception.*;
 import com.nikworkspace.AnyShare.pojo.*;
-import com.nikworkspace.AnyShare.modal.Session;
+import com.nikworkspace.AnyShare.model.Session;
 import com.nikworkspace.AnyShare.enums.SessionStatus;
+import com.nikworkspace.AnyShare.service.SessionStorageService;
 import com.nikworkspace.AnyShare.service.interfaces.SessionService;
 import com.nikworkspace.AnyShare.util.CodeGenerator;
 import com.nikworkspace.AnyShare.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.nikworkspace.AnyShare.model.Peer;
 import java.time.LocalDateTime;
@@ -24,10 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class SessionServiceImpl implements SessionService {
 
-    // In-memory storage for MVP (will use Redis later for production)
-    private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
-    // Quick lookup: roomCode -> sessionId
-    private final ConcurrentHashMap<String, String> roomCodeToSessionId = new ConcurrentHashMap<>();
+    private final SessionStorageService sessionStorage;
     private final CodeGenerator codeGenerator;
     private final JwtUtil jwtUtil;
 
@@ -60,10 +57,12 @@ public class SessionServiceImpl implements SessionService {
                 .build();
 
         // Step 4: Store in memory
-        sessions.put(sessionId, session);
-        roomCodeToSessionId.put(roomCode, sessionId);
 
-        log.info("Session created - ID: {}, Code: {}, Expires: {}",
+        sessionStorage.getSessions().put(sessionId, session);
+        sessionStorage.getRoomCodeToSessionId().put(roomCode, sessionId);
+
+        log.info("Session created - ID: {}, Code: {}, E" +
+                        "xpires: {}",
                 sessionId, roomCode, expiresAt);
 
         // Step 5: Generate QR code payload (JSON that frontend will encode)
@@ -105,7 +104,7 @@ public class SessionServiceImpl implements SessionService {
         log.info("Fetching session info for roomCode: {}", roomCode);
 
         // Step 1: Find sessionId using roomCode
-        String sessionId = roomCodeToSessionId.get(roomCode);
+        String sessionId = sessionStorage.getRoomCodeToSessionId().get(roomCode);
 
         // Step 2: Check if room code exists
         if (sessionId == null) {
@@ -116,13 +115,13 @@ public class SessionServiceImpl implements SessionService {
         }
 
         // Step 3: Get the session
-        Session session = sessions.get(sessionId);
+        Session session = sessionStorage.getSessions().get(sessionId);
 
         // Step 4: Double-check session exists (defensive programming)
         if (session == null) {
             log.error("Inconsistent state: roomCode exists but session not found. SessionId: {}", sessionId);
             // Clean up the orphaned roomCode mapping
-            roomCodeToSessionId.remove(roomCode);
+            sessionStorage.getRoomCodeToSessionId().remove(roomCode);
             throw new SessionNotFoundException(
                     "Session with code " + roomCode + " does not exist or has expired"
             );
@@ -160,8 +159,8 @@ public class SessionServiceImpl implements SessionService {
      * Removes from both maps to free memory
      */
     private void cleanupSession(Session session) {
-        sessions.remove(session.getSessionId());
-        roomCodeToSessionId.remove(session.getRoomCode());
+        sessionStorage.getSessions().remove(session.getSessionId());
+        sessionStorage.getRoomCodeToSessionId().remove(session.getRoomCode());
         log.info("Session cleaned up - ID: {}, Code: {}",
                 session.getSessionId(), session.getRoomCode());
     }
@@ -172,7 +171,7 @@ public class SessionServiceImpl implements SessionService {
                 roomCode, request.getDeviceType());
 
         // Step 1: Find sessionId using roomCode
-        String sessionId = roomCodeToSessionId.get(roomCode);
+        String sessionId = sessionStorage.getRoomCodeToSessionId().get(roomCode);
 
         if (sessionId == null) {
             log.warn("Room code not found: {}", roomCode);
@@ -182,11 +181,11 @@ public class SessionServiceImpl implements SessionService {
         }
 
         // Step 2: Get the session
-        Session session = sessions.get(sessionId);
+        Session session = sessionStorage.getSessions().get(sessionId);
 
         if (session == null) {
             log.error("Inconsistent state: roomCode exists but session not found");
-            roomCodeToSessionId.remove(roomCode);
+            sessionStorage.getRoomCodeToSessionId().remove(roomCode);
             throw new SessionNotFoundException(
                     "Session with code " + roomCode + " does not exist or has expired"
             );
@@ -311,7 +310,7 @@ public class SessionServiceImpl implements SessionService {
         }
 
         // Step 4: Find the session
-        Session session = sessions.get(sessionId);
+        Session session = sessionStorage.getSessions().get(sessionId);
 
         if (session == null) {
             log.warn("Session not found: {}", sessionId);

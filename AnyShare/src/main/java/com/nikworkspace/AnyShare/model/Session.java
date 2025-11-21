@@ -1,4 +1,4 @@
-package com.nikworkspace.AnyShare.modal;
+package com.nikworkspace.AnyShare.model;
 
 import com.nikworkspace.AnyShare.enums.SessionStatus;
 import lombok.AllArgsConstructor;
