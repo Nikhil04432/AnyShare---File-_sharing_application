@@ -1,4 +1,4 @@
-package com.nikworkspace.AnyShare.pojo;
+package com.nikworkspace.AnyShare.dto;
 
 
 import lombok.*;

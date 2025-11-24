@@ -1,8 +1,8 @@
 package com.nikworkspace.AnyShare.service.impl;
 
 import com.nikworkspace.AnyShare.constant.Constant;
+import com.nikworkspace.AnyShare.dto.*;
 import com.nikworkspace.AnyShare.exception.*;
-import com.nikworkspace.AnyShare.pojo.*;
 import com.nikworkspace.AnyShare.model.Session;
 import com.nikworkspace.AnyShare.enums.SessionStatus;
 import com.nikworkspace.AnyShare.service.SessionStorageService;
@@ -17,7 +17,6 @@ import com.nikworkspace.AnyShare.model.Peer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Slf4j
@@ -35,7 +34,7 @@ public class SessionServiceImpl implements SessionService {
     private static final String WS_URL = Constant.WEBSOCKET_URL; // Will configure properly later
 
     @Override
-    public SessionCreateResponse createSession(SessionCreateRequest request) {
+    public SessionCreateResponse createSession(SignalMessageDTO.SessionCreateRequest request) {
         log.info("Creating new session for device: {}", request.getDeviceType());
 
         // Step 1: Generate unique identifiers

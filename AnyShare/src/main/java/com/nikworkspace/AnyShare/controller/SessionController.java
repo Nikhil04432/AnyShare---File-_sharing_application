@@ -1,7 +1,7 @@
 package com.nikworkspace.AnyShare.controller;
 
 import com.nikworkspace.AnyShare.constant.Constant;
-import com.nikworkspace.AnyShare.pojo.*;
+import com.nikworkspace.AnyShare.dto.*;
 import com.nikworkspace.AnyShare.service.interfaces.SessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ public class SessionController {
      */
     @PostMapping
     public ResponseEntity<SessionCreateResponse> createSession(
-            @RequestBody SessionCreateRequest request
+            @RequestBody SignalMessageDTO.SessionCreateRequest request
     ) {
         log.info("Creating session - Device: {}, UA: {}",
                 request.getDeviceType(), request.getUserAgent());

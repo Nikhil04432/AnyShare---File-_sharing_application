@@ -23,4 +23,12 @@ public class SignalMessageDTO {
     // Error-related fields
     private String code;        // Error code
     private String message;     // Error message
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SessionCreateRequest {
+        private String deviceType;   // e.g., MOBILE, DESKTOP, TABLET
+        private String userAgent;    // Browser or app info
+    }
 }

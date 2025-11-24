@@ -1,7 +1,7 @@
 package com.nikworkspace.AnyShare.constant;
 
 public class Constant {
-    private Constant(){
+    private Constant(){ 
 
     }
     public static final String ROOM_CODE_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
