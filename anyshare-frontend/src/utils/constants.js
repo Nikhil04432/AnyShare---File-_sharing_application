@@ -4,7 +4,7 @@ export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8
 
 // File Transfer Configuration
 // Adaptive chunk size - larger chunks = fewer operations = faster
-export const CHUNK_SIZE = 256 * 1024; // Increase from 64KB to 256KB
+export const CHUNK_SIZE = 64 * 1024; // Increase from 64KB to 256KB
 
 // For very fast networks, you can go even higher:
 //export const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
