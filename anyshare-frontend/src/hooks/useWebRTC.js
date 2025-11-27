@@ -10,6 +10,7 @@ export const useWebRTC = (sendMessage) => {
     dataChannel,
     setPeerConnection,
     setDataChannel,
+    setRemotePeer,
     addLog,
   } = useStore();
 
@@ -40,82 +41,101 @@ export const useWebRTC = (sendMessage) => {
       }
     };
 
-    // Monitor connection state
+    // FIXED: Enhanced connection state monitoring
     pc.onconnectionstatechange = () => {
       addLog(`Connection state: ${pc.connectionState}`, 'info');
       
       if (pc.connectionState === 'connected') {
-        addLog('WebRTC peer connection established!', 'success');
+        addLog('✅ WebRTC peer connection established!', 'success');
       } else if (pc.connectionState === 'disconnected') {
-        addLog('WebRTC peer connection disconnected', 'warning');
+        addLog('⚠️ WebRTC peer connection disconnected', 'warning');
+        
+        // CRITICAL: Close data channel when peer disconnects
+        if (dataChannel) {
+          addLog('Closing data channel due to disconnection', 'warning');
+          setDataChannel(null);
+        }
       } else if (pc.connectionState === 'failed') {
-        addLog('WebRTC peer connection failed', 'error');
+        addLog('❌ WebRTC peer connection failed', 'error');
+        
+        // CRITICAL: Clean up on connection failure
+        if (dataChannel) {
+          addLog('Closing data channel due to connection failure', 'error');
+          setDataChannel(null);
+        }
+        
+        // Optionally clear remote peer
+        addLog('Clearing remote peer due to connection failure', 'warning');
+        setRemotePeer(null);
       }
     };
 
     // Monitor ICE connection state
     pc.oniceconnectionstatechange = () => {
       addLog(`ICE connection state: ${pc.iceConnectionState}`, 'info');
+      
+      // ADDED: Handle ICE connection failures
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        addLog('ICE connection issue detected', 'warning');
+      }
     };
 
     peerConnectionRef.current = pc;
     setPeerConnection(pc);
 
     return pc;
-  }, [remotePeer, sendMessage, setPeerConnection, addLog]);
+  }, [remotePeer, sendMessage, setPeerConnection, setDataChannel, setRemotePeer, addLog]);
 
   /**
    * Create WebRTC Offer (Sender side)
    */
   const createOffer = useCallback(async () => {
-  try {
-    addLog('=== Starting WebRTC Offer Creation ===', 'info');
-    addLog(`Remote peer: ${JSON.stringify(remotePeer)}`, 'info');
+    try {
+      addLog('=== Starting WebRTC Offer Creation ===', 'info');
+      addLog(`Remote peer: ${JSON.stringify(remotePeer)}`, 'info');
 
-    const pc = initializePeerConnection();
+      const pc = initializePeerConnection();
 
-    // Create data channel for file transfer with optimized settings
-    addLog('Creating data channel...', 'info');
-    const dc = pc.createDataChannel('fileTransfer', {
-      ordered: true,
-      maxRetransmits: 0,  // Don't retransmit - we want speed over reliability for large files
-      // OR use maxPacketLifeTime: 1000 for time-based reliability
-    });
+      // Create data channel for file transfer with optimized settings
+      addLog('Creating data channel...', 'info');
+      const dc = pc.createDataChannel('fileTransfer', {
+        ordered: true,
+      });
 
-    setupDataChannel(dc);
+      setupDataChannel(dc);
 
-    // Create offer
-    addLog('Creating WebRTC offer...', 'info');
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      // Create offer
+      addLog('Creating WebRTC offer...', 'info');
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    addLog(`Local description set. Type: ${offer.type}`, 'success');
+      addLog(`Local description set. Type: ${offer.type}`, 'success');
 
-    if (!remotePeer) {
-      addLog('ERROR: No remote peer available to send offer!', 'error');
-      return;
+      if (!remotePeer) {
+        addLog('ERROR: No remote peer available to send offer!', 'error');
+        return;
+      }
+
+      // Send offer via WebSocket
+      addLog(`Sending OFFER to ${remotePeer.peerId}`, 'info');
+      
+      const success = sendMessage({
+        type: MESSAGE_TYPES.OFFER,
+        targetId: remotePeer.peerId,
+        payload: pc.localDescription,
+      });
+
+      if (success) {
+        addLog('OFFER sent successfully via WebSocket', 'success');
+      } else {
+        addLog('Failed to send OFFER via WebSocket', 'error');
+      }
+
+    } catch (error) {
+      addLog(`Error creating offer: ${error.message}`, 'error');
+      console.error('Full error:', error);
     }
-
-    // Send offer via WebSocket
-    addLog(`Sending OFFER to ${remotePeer.peerId}`, 'info');
-    
-    const success = sendMessage({
-      type: MESSAGE_TYPES.OFFER,
-      targetId: remotePeer.peerId,
-      payload: pc.localDescription,
-    });
-
-    if (success) {
-      addLog('OFFER sent successfully via WebSocket', 'success');
-    } else {
-      addLog('Failed to send OFFER via WebSocket', 'error');
-    }
-
-  } catch (error) {
-    addLog(`Error creating offer: ${error.message}`, 'error');
-    console.error('Full error:', error);
-  }
-}, [remotePeer, initializePeerConnection, sendMessage, addLog]);
+  }, [remotePeer, initializePeerConnection, sendMessage, addLog]);
 
   /**
    * Handle incoming WebRTC Offer (Receiver side)
@@ -191,22 +211,23 @@ export const useWebRTC = (sendMessage) => {
   }, [addLog]);
 
   /**
-   * Setup Data Channel event handlers
+   * Setup Data Channel event handlers - FIXED
    */
   const setupDataChannel = useCallback((dc) => {
     dc.onopen = () => {
-      addLog('Data channel opened - Ready for file transfer!', 'success');
+      addLog('✅ Data channel opened - Ready for file transfer!', 'success');
       setDataChannel(dc);
     };
 
     dc.onclose = () => {
-      addLog('Data channel closed', 'warning');
+      addLog('⚠️ Data channel closed', 'warning');
       setDataChannel(null);
     };
 
     dc.onerror = (error) => {
-      addLog('Data channel error', 'error');
+      addLog('❌ Data channel error', 'error');
       console.error('Data channel error:', error);
+      setDataChannel(null);
     };
 
     // File transfer will be handled by useFileTransfer hook

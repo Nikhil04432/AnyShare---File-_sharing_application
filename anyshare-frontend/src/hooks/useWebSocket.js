@@ -33,7 +33,7 @@ export const useWebSocket = () => {
     const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
-      addLog('WebSocket connected!', 'success');
+      addLog('✅ WebSocket connected!', 'success');
       setConnectionState(CONNECTION_STATE.CONNECTED);
       setWebSocket(websocket);
     };
@@ -58,9 +58,12 @@ export const useWebSocket = () => {
       addLog(`WebSocket closed: ${event.code} ${event.reason}`, 'warning');
       setConnectionState(CONNECTION_STATE.DISCONNECTED);
       setWebSocket(null);
+      
+      // ADDED: Clear remote peer on WebSocket close
+      setRemotePeer(null);
     };
 
-  }, [session.token, ws, setWebSocket, setConnectionState, addLog]);
+  }, [session.token, ws, setWebSocket, setConnectionState, setRemotePeer, addLog]);
 
   /**
    * Disconnect from WebSocket
@@ -71,8 +74,9 @@ export const useWebSocket = () => {
       ws.close();
       setWebSocket(null);
       setConnectionState(CONNECTION_STATE.DISCONNECTED);
+      setRemotePeer(null);
     }
-  }, [ws, setWebSocket, setConnectionState, addLog]);
+  }, [ws, setWebSocket, setConnectionState, setRemotePeer, addLog]);
 
   /**
    * Send message via WebSocket
@@ -99,26 +103,26 @@ export const useWebSocket = () => {
   const handleMessage = useCallback((message) => {
     switch (message.type) {
       case MESSAGE_TYPES.PEER_JOINED:
-  addLog(`Peer joined: ${message.senderId}`, 'success');
-  addLog(`Device type: ${message.payload}`, 'info');
-  
-  // Set remote peer with all details
-  setRemotePeer({
-    peerId: message.senderId,
-    deviceType: message.payload,
-    sessionId: message.sessionId,
-  });
-  
-  // Dispatch event for components to react
-  window.dispatchEvent(new CustomEvent('peer-joined', { 
-    detail: {
-      peerId: message.senderId,
-      deviceType: message.payload,
-    }
-  }));
-  
-  addLog('Remote peer set in store', 'success');
-  break;
+        addLog(`✅ Peer joined: ${message.senderId}`, 'success');
+        addLog(`Device type: ${message.payload}`, 'info');
+        
+        // Set remote peer with all details
+        setRemotePeer({
+          peerId: message.senderId,
+          deviceType: message.payload,
+          sessionId: message.sessionId,
+        });
+        
+        // Dispatch event for components to react
+        window.dispatchEvent(new CustomEvent('peer-joined', { 
+          detail: {
+            peerId: message.senderId,
+            deviceType: message.payload,
+          }
+        }));
+        
+        addLog('Remote peer set in store', 'success');
+        break;
 
       case MESSAGE_TYPES.OFFER:
       case MESSAGE_TYPES.ANSWER:
@@ -130,7 +134,7 @@ export const useWebSocket = () => {
         break;
 
       case MESSAGE_TYPES.PEER_DISCONNECTED:
-        addLog(`Peer disconnected: ${message.senderId}`, 'warning');
+        addLog(`⚠️ Peer disconnected: ${message.senderId}`, 'warning');
         
         // Clear remote peer
         setRemotePeer(null);

@@ -1,10 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Wifi, Loader2, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import useStore from '../store/useStore';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
-
 
 import SessionCreator from '../components/Sender/SessionCreator';
 import QRCodeDisplay from '../components/Sender/QRCodeDisplay';
@@ -41,11 +40,17 @@ const Sender = () => {
     }
   }, [remotePeer, createOffer, addLog]);
 
+  // FIXED: Reset offer flag when remote peer disconnects
+  useEffect(() => {
+    if (!remotePeer) {
+      offerCreatedRef.current = false;
+    }
+  }, [remotePeer]);
+
   // Listen for peer joined event
   useEffect(() => {
     const handlePeerJoined = (event) => {
       addLog('Peer joined event received!', 'success');
-      // remotePeer will be set by the WebSocket handler
     };
 
     window.addEventListener('peer-joined', handlePeerJoined);
@@ -54,11 +59,6 @@ const Sender = () => {
       window.removeEventListener('peer-joined', handlePeerJoined);
     };
   }, [addLog]);
-
-  // Debug: Log data channel state changes
-  useEffect(() => {
-    addLog(`Data channel open: ${isDataChannelOpen}`, 'info');
-  }, [isDataChannelOpen, addLog]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -75,6 +75,12 @@ const Sender = () => {
       navigate('/');
     }
   };
+
+  // FIXED: Determine connection status
+  const isPeerConnected = peerConnection && peerConnection.connectionState === 'connected';
+  const isPeerDisconnected = peerConnection && 
+    (peerConnection.connectionState === 'disconnected' || 
+     peerConnection.connectionState === 'failed');
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -101,77 +107,87 @@ const Sender = () => {
           {session.roomCode && <QRCodeDisplay />}
 
           {/* Step 2: Connection Status */}
-            {session.token && (
-              <div className="space-y-4">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                  Step 2: Wait for Receiver
-                </h3>
-                
-                {/* WebSocket Status */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 font-medium">Signaling Server:</span>
-                    <StatusIndicator state={connectionState} />
-                  </div>
+          {session.token && (
+            <div className="space-y-4">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                Step 2: Wait for Receiver
+              </h3>
+              
+              {/* WebSocket Status */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-700 font-medium">Signaling Server:</span>
+                  <StatusIndicator state={connectionState} />
                 </div>
+              </div>
 
-                {/* Waiting for Receiver */}
-                {isConnected && !remotePeer && (
-                  <div className="text-center py-8 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200">
-                    <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Loader2 className="w-8 h-8 text-yellow-600 animate-spin" />
-                    </div>
-                    <p className="text-yellow-800 font-semibold text-lg">
-                      Waiting for receiver to join...
-                    </p>
-                    <p className="text-yellow-600 text-sm mt-2">
-                      Share the room code above with the receiver
-                    </p>
+              {/* Waiting for Receiver */}
+              {isConnected && !remotePeer && (
+                <div className="text-center py-8 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200">
+                  <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Loader2 className="w-8 h-8 text-yellow-600 animate-spin" />
                   </div>
-                )}
+                  <p className="text-yellow-800 font-semibold text-lg">
+                    Waiting for receiver to join...
+                  </p>
+                  <p className="text-yellow-600 text-sm mt-2">
+                    Share the room code above with the receiver
+                  </p>
+                </div>
+              )}
 
-                {/* Receiver Joined - Establishing P2P */}
-                {remotePeer && !isDataChannelOpen && (
-                  <div className="text-center py-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Wifi className="w-8 h-8 text-blue-600 animate-pulse" />
-                    </div>
-                    <p className="text-blue-800 font-semibold text-lg">
-                      Receiver joined! Connecting...
-                    </p>
-                    <p className="text-blue-600 text-sm mt-2">
-                      Establishing peer-to-peer connection
-                    </p>
+              {/* Receiver Joined - Establishing P2P */}
+              {remotePeer && !isDataChannelOpen && !isPeerDisconnected && (
+                <div className="text-center py-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Wifi className="w-8 h-8 text-blue-600 animate-pulse" />
                   </div>
-                )}
+                  <p className="text-blue-800 font-semibold text-lg">
+                    Receiver joined! Connecting...
+                  </p>
+                  <p className="text-blue-600 text-sm mt-2">
+                    Establishing peer-to-peer connection
+                  </p>
+                </div>
+              )}
 
-                {/* P2P Connected - Ready! */}
-                {remotePeer && isDataChannelOpen && peerConnection && peerConnection.connectionState === 'connected' && (
-                  <div className="text-center py-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-300">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle className="w-8 h-8 text-green-600" />
-                    </div>
-                    <p className="text-green-800 font-semibold text-lg">
-                      ✓ Connected & Ready!
-                    </p>
-                    <p className="text-green-600 text-sm mt-2">
-                      You can now send files securely
-                    </p>
+              {/* P2P Connected - Ready! */}
+              {remotePeer && isPeerConnected && isDataChannelOpen && (
+                <div className="text-center py-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-300">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
                   </div>
-                )}
+                  <p className="text-green-800 font-semibold text-lg">
+                    ✅ Connected & Ready!
+                  </p>
+                  <p className="text-green-600 text-sm mt-2">
+                    You can now send files securely
+                  </p>
+                </div>
+              )}
 
-                {/* Connection Failed/Disconnected */}
-                {remotePeer && !isDataChannelOpen && peerConnection && peerConnection.connectionState !== 'connected' && peerConnection.connectionState !== 'connecting' && (
-                  <div className="text-center py-8 bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border-2 border-red-300">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <XCircle className="w-8 h-8 text-red-600" />
-                    </div>
-                    <p className="text-red-800 font-semibold text-lg">
-                      Connection Lost
-                    </p>
-                    <p className="text-red-600 text-sm mt-2">
-                      The receiver has disconnected or connection failed
-                    </p>
+              {/* FIXED: Connection Lost/Disconnected Warning */}
+              {remotePeer && isPeerDisconnected && (
+                <div className="text-center py-8 bg-gradient-to-br from-red-50 to-pink-50 rounded-xl border-2 border-red-300">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <XCircle className="w-8 h-8 text-red-600" />
+                  </div>
+                  <p className="text-red-800 font-semibold text-lg">
+                    ⚠️ Receiver Disconnected
+                  </p>
+                  <p className="text-red-600 text-sm mt-2 mb-4">
+                    The receiver has disconnected or connection failed
+                  </p>
+                  
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={() => {
+                        addLog('Waiting for receiver to reconnect...', 'info');
+                      }}
+                      className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-all"
+                    >
+                      Wait for Reconnection
+                    </button>
                     <button
                       onClick={() => {
                         if (window.confirm('Start over with a new session?')) {
@@ -180,30 +196,19 @@ const Sender = () => {
                           navigate('/');
                         }
                       }}
-                      className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all"
+                      className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all"
                     >
                       Start Over
                     </button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Step 3: File Transfer - ALWAYS SHOW FOR DEBUG */}
+          {/* Step 3: File Transfer */}
           {remotePeer && (
             <div>
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800">
-                  <strong>Debug Info:</strong>
-                  <br />
-                  Remote Peer: {remotePeer?.peerId || 'Not set'}
-                  <br />
-                  Data Channel: {dataChannel ? dataChannel.readyState : 'null'}
-                  <br />
-                  Is Open: {isDataChannelOpen ? 'Yes ✓' : 'No ✗'}
-                </p>
-              </div>
-              
               <FileSelector />
               <TransferProgress />
             </div>

@@ -1,28 +1,71 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Download, Zap, Shield, Globe } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Send, Download, Zap, Shield, Globe, LogOut, User } from 'lucide-react';
 
 const Home = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user, logout } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="max-w-4xl w-full">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-6xl font-bold text-white mb-4">
-            🚀 AnyShare
-          </h1>
-          <p className="text-2xl text-white/90 font-medium">
-            Share files instantly. Anywhere. Anytime.
-          </p>
-          <p className="text-white/70 mt-2">
-            Fast, secure, peer-to-peer file sharing
-          </p>
+        {/* Header with Auth Info */}
+        <div className="flex justify-between items-center mb-8">
+          <div className="text-center flex-1">
+            <h1 className="text-6xl font-bold text-white mb-4">
+              🚀 AnyShare
+            </h1>
+            <p className="text-2xl text-white/90 font-medium">
+              Share files instantly. Anywhere. Anytime.
+            </p>
+            <p className="text-white/70 mt-2">
+              Fast, secure, peer-to-peer file sharing
+            </p>
+          </div>
+
+          {/* Auth Status */}
+          {isAuthenticated ? (
+            <div className="absolute top-4 right-4">
+              <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 shadow-lg">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-primary-500 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">{user?.displayName}</p>
+                    <p className="text-white/70 text-sm">{user?.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={logout}
+                  className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg font-semibold transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="absolute top-4 right-4 flex gap-3">
+              <button
+                onClick={() => navigate('/login')}
+                className="bg-white/10 backdrop-blur-md hover:bg-white/20 text-white py-2 px-6 rounded-lg font-semibold transition-all border border-white/20"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => navigate('/register')}
+                className="bg-primary-500 hover:bg-primary-600 text-white py-2 px-6 rounded-lg font-semibold transition-all shadow-lg"
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Action Cards */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
+        <div className="grid md:grid-cols-2 gap-6 mb-12 mt-16">
           {/* Send Card */}
           <div
             onClick={() => navigate('/sender')}
