@@ -3,9 +3,11 @@ package com.nikworkspace.AnyShare.handler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nikworkspace.AnyShare.dto.SignalMessageDTO;
 import com.nikworkspace.AnyShare.exception.InvalidTokenException;
+import com.nikworkspace.AnyShare.exception.SessionNotFoundException;
 import com.nikworkspace.AnyShare.model.Peer;
 import com.nikworkspace.AnyShare.model.Session;
 import com.nikworkspace.AnyShare.service.SessionStorageService;
+import com.nikworkspace.AnyShare.service.impl.SessionServiceImpl;
 import com.nikworkspace.AnyShare.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     private final JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
     private final SessionStorageService sessionStorage;
+    private final SessionServiceImpl sessionService;
 
     // Constants for WebSocket attributes
     public static final String PEER_ID = "peerId";
@@ -71,11 +74,11 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     peerId, sessionId, role);
 
             // Step 4: Find the session
-            Session session = sessionStorage.getSessions().get(sessionId);
-
-            if (session == null) {
-                log.warn("Session not found for WebSocket connection: {}", sessionId);
-                sendErrorAndClose(wsSession, "SESSION_NOT_FOUND", "Session does not exist");
+            Session session;
+            try {
+                session = sessionService.getOrLoadSession(sessionId);
+            } catch (SessionNotFoundException e) {
+                sendErrorAndClose(wsSession, "SESSION_NOT_FOUND", e.getMessage());
                 return;
             }
 
@@ -223,9 +226,17 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
      * These messages need to be forwarded to the target peer
      */
     private void handleSignalingMessage(String sessionId, SignalMessageDTO message) {
-        Session session = sessionStorage.getSessions().get(sessionId);
+//        Session session = sessionStorage.getSessions().get(sessionId);
+//
+//        if (session == null) {
+//            log.warn("Session not found for signaling message: {}", sessionId);
+//            return;
+//        }
 
-        if (session == null) {
+        Session session;
+        try {
+            session = sessionService.getOrLoadSession(sessionId);
+        } catch (SessionNotFoundException e) {
             log.warn("Session not found for signaling message: {}", sessionId);
             return;
         }

@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-sessions-table
+      author: nikworkspace
+      changes:
+        - createTable:
+            tableName: sessions
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: room_code
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: creator_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_sessions_creator
+                    references: users(id)
+              - column:
+                  name: status
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: max_peers
+                  type: integer
+                  defaultValueNumeric: 2
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: closed_at
+                  type: timestamp
+
+        - createIndex:
+            indexName: idx_sessions_room_code
+            tableName: sessions
+            columns:
+              - column:
+                  name: room_code
+
+        - createIndex:
+            indexName: idx_sessions_creator_id
+            tableName: sessions
+            columns:
+              - column:
+                  name: creator_id
