@@ -23,8 +23,70 @@ public class JwtUtil {
 
     private final JwtConfig jwtConfig;
 
+    // ============= USER AUTHENTICATION TOKENS =============
+
     /**
-     * Generate JWT token for a peer in a session
+     * Generate JWT token for user authentication (login)
+     *
+     * @param email User's email (used as username)
+     * @param userId User's UUID
+     * @return Generated JWT token string
+     */
+    public String generateAuthToken(String email, String userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("type", "AUTH"); // Mark as authentication token
+
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtConfig.getExpiration());
+
+        String token = Jwts.builder()
+                .claims(claims)
+                .subject(email)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
+
+        log.debug("Generated auth token for email: {}, userId: {}, expires at: {}",
+                email, userId, expiryDate);
+
+        return token;
+    }
+
+    /**
+     * Generate refresh token (longer expiration)
+     *
+     * @param email User's email
+     * @param userId User's UUID
+     * @return Generated refresh token
+     */
+    public String generateRefreshToken(String email, String userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("type", "REFRESH"); // Mark as refresh token
+
+        Date now = new Date();
+        // Refresh token valid for 7 days
+        Date expiryDate = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000L));
+
+        String token = Jwts.builder()
+                .claims(claims)
+                .subject(email)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
+
+        log.debug("Generated refresh token for email: {}, expires at: {}", email, expiryDate);
+
+        return token;
+    }
+
+    // ============= WEBSOCKET SESSION TOKENS (existing) =============
+
+    /**
+     * Generate JWT token for a peer in a WebSocket session
      *
      * @param peerId Unique identifier for the peer
      * @param sessionId Session the peer belongs to
@@ -35,23 +97,26 @@ public class JwtUtil {
         Map<String, Object> claims = new HashMap<>();
         claims.put("sessionId", sessionId);
         claims.put("role", role);
+        claims.put("type", "WEBSOCKET"); // Mark as WebSocket token
 
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtConfig.getExpiration());
 
         String token = Jwts.builder()
-                .claims(claims)                          // Custom claims
-                .subject(peerId)                         // Who this token is for
-                .issuedAt(now)                          // When token was created
-                .expiration(expiryDate)                 // When token expires
-                .signWith(getSigningKey())              // Sign with secret key
-                .compact();                              // Build final token string
+                .claims(claims)
+                .subject(peerId)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(getSigningKey())
+                .compact();
 
-        log.debug("Generated JWT token for peerId: {}, sessionId: {}, expires at: {}",
+        log.debug("Generated WebSocket token for peerId: {}, sessionId: {}, expires at: {}",
                 peerId, sessionId, expiryDate);
 
         return token;
     }
+
+    // ============= COMMON VALIDATION & EXTRACTION =============
 
     /**
      * Validate JWT token and extract claims
@@ -63,12 +128,12 @@ public class JwtUtil {
     public Claims validateToken(String token) {
         try {
             Claims claims = Jwts.parser()
-                    .verifyWith(getSigningKey())        // Verify signature
+                    .verifyWith(getSigningKey())
                     .build()
-                    .parseSignedClaims(token)           // Parse and validate
-                    .getPayload();                      // Extract claims
+                    .parseSignedClaims(token)
+                    .getPayload();
 
-            log.debug("Token validated successfully for peerId: {}", claims.getSubject());
+            log.debug("Token validated successfully for subject: {}", claims.getSubject());
 
             return claims;
 
@@ -79,7 +144,18 @@ public class JwtUtil {
     }
 
     /**
-     * Extract peerId from token
+     * Extract subject from token (email for auth, peerId for WebSocket)
+     *
+     * @param token JWT token
+     * @return Subject
+     */
+    public String extractSubject(String token) {
+        Claims claims = validateToken(token);
+        return claims.getSubject();
+    }
+
+    /**
+     * Extract peerId from WebSocket token
      *
      * @param token JWT token
      * @return Peer ID (subject)
@@ -90,7 +166,7 @@ public class JwtUtil {
     }
 
     /**
-     * Extract sessionId from token
+     * Extract sessionId from WebSocket token
      *
      * @param token JWT token
      * @return Session ID
@@ -101,7 +177,7 @@ public class JwtUtil {
     }
 
     /**
-     * Extract role from token
+     * Extract role from WebSocket token
      *
      * @param token JWT token
      * @return Role (SENDER or RECEIVER)
@@ -109,6 +185,28 @@ public class JwtUtil {
     public String extractRole(String token) {
         Claims claims = validateToken(token);
         return claims.get("role", String.class);
+    }
+
+    /**
+     * Extract userId from auth token
+     *
+     * @param token JWT token
+     * @return User ID
+     */
+    public String extractUserId(String token) {
+        Claims claims = validateToken(token);
+        return claims.get("userId", String.class);
+    }
+
+    /**
+     * Get token type (AUTH, REFRESH, or WEBSOCKET)
+     *
+     * @param token JWT token
+     * @return Token type
+     */
+    public String getTokenType(String token) {
+        Claims claims = validateToken(token);
+        return claims.get("type", String.class);
     }
 
     /**
@@ -122,7 +220,7 @@ public class JwtUtil {
             Claims claims = validateToken(token);
             return claims.getExpiration().before(new Date());
         } catch (InvalidTokenException e) {
-            return true; // If validation fails, consider it expired
+            return true;
         }
     }
 

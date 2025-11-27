@@ -2,7 +2,6 @@ package com.nikworkspace.AnyShare.service.impl;
 
 import com.nikworkspace.AnyShare.dto.*;
 import com.nikworkspace.AnyShare.entity.SessionEntity;
-import com.nikworkspace.AnyShare.entity.User;
 import com.nikworkspace.AnyShare.exception.*;
 import com.nikworkspace.AnyShare.model.Peer;
 import com.nikworkspace.AnyShare.model.Session;
@@ -178,13 +177,22 @@ public class SessionServiceImpl implements SessionService {
             );
         }
 
-        if (session.getPeersConnected() >= session.getMaxPeers()) {
+        // FIXED: Count only CONNECTED peers (those with active WebSocket)
+        long connectedPeers = session.getPeers().values().stream()
+                .filter(Peer::isConnected)
+                .count();
+
+        log.info("Session {} has {} connected peers (total registered: {})",
+                sessionId, connectedPeers, session.getPeers().size());
+
+        // FIXED: Check connected peers, not total registered peers
+        if (connectedPeers >= session.getMaxPeers()) {
             throw new SessionFullException(
                     "Session is full. Maximum " + session.getMaxPeers() + " peers allowed."
             );
         }
 
-        if (session.getStatus() != SessionStatus.WAITING) {
+        if (session.getStatus() != SessionStatus.WAITING && session.getStatus() != SessionStatus.CONNECTED) {
             throw new InvalidSessionStateException(
                     "Session not accepting connections. Status: " + session.getStatus()
             );
@@ -205,7 +213,8 @@ public class SessionServiceImpl implements SessionService {
 
         session.getPeers().put(peerId, peer);
 
-        if (session.getPeersConnected() >= session.getMaxPeers()) {
+        // Update status based on connected peers
+        if (connectedPeers + 1 >= session.getMaxPeers()) {
             session.setStatus(SessionStatus.CONNECTED);
 
             // Update in database
@@ -215,7 +224,8 @@ public class SessionServiceImpl implements SessionService {
             });
         }
 
-        log.info("Peer {} joined session {}", peerId, sessionId);
+        log.info("Peer {} joined session {} (connected: {}/{})",
+                peerId, sessionId, connectedPeers + 1, session.getMaxPeers());
 
         return SessionJoinResponse.builder()
                 .sessionId(sessionId)
@@ -281,7 +291,7 @@ public class SessionServiceImpl implements SessionService {
         Session session = activeSessions.get(sessionId);
 
         if (session == null) {
-            log.info("Session not found in memory — loading from database: {}", sessionId);
+            log.info("Session not found in memory – loading from database: {}", sessionId);
 
             SessionEntity entity = sessionRepository.findById(UUID.fromString(sessionId))
                     .orElseThrow(() -> new SessionNotFoundException("Session " + sessionId + " not found"));
@@ -293,5 +303,4 @@ public class SessionServiceImpl implements SessionService {
 
         return session;
     }
-
 }

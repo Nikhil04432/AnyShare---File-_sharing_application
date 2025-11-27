@@ -5,7 +5,7 @@ import com.nikworkspace.AnyShare.dto.*;
 public interface SessionService {
     SessionCreateResponse createSession(SignalMessageDTO.SessionCreateRequest createRequest);
 
-     SessionInfoResponse getSessionInfo(String roomCode);
+    SessionInfoResponse getSessionInfo(String roomCode);
 
      SessionJoinResponse joinSession(String roomCode, JoinSessionRequest request);
 
