@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: anyshare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anyshare
+      POSTGRES_USER: anyshare_user
+      POSTGRES_PASSWORD: anyshare_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - anyshare-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anyshare_user -d anyshare"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Spring Boot Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anyshare-backend
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/anyshare
+      SPRING_DATASOURCE_USERNAME: anyshare_user
+      SPRING_DATASOURCE_PASSWORD: anyshare_password
+
+      # JPA/Hibernate
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: false
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+
+      # JWT Configuration
+      JWT_SECRET: YourSecretKeyHereMustBeAtLeast256BitsLongForHS256AlgorithmChangeThis
+      JWT_EXPIRATION: 300000
+
+      # Server Configuration
+      SERVER_PORT: 8080
+
+      # Logging
+      LOGGING_LEVEL_COM_NIKWORKSPACE: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: INFO
+    ports:
+      - "8080:8080"
+    networks:
+      - anyshare-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # React Frontend with Nginx
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: anyshare-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - anyshare-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  anyshare-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
