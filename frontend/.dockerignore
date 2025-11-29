@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.git/
+.gitignore
+*.log
+*.tmp
+.DS_Store
+.env.local
+.env.development
+coverage/
