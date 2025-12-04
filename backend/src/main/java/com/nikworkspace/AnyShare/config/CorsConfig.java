@@ -16,11 +16,12 @@ public class CorsConfig {
                 registry.addMapping("/**")
                         .allowedOrigins(
                                 "http://localhost",
-                                "http://localhost:3000"
+                                "http://localhost:3000",
+                                "https://any-share-file-sharing-application.vercel.app"   // ✅ PRODUCTION FRONTEND
                         )
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .allowCredentials(false);
+                        .allowCredentials(true);
             }
         };
     }
