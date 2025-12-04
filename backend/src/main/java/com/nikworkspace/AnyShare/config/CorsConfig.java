@@ -11,17 +11,18 @@ public class CorsConfig {
     @Bean
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
+
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
                         .allowedOrigins(
                                 "http://localhost",
                                 "http://localhost:3000",
-                                "https://any-share-file-sharing-application.vercel.app"   // ✅ PRODUCTION FRONTEND
+                                "https://any-share-file-sharing-application.vercel.app"
                         )
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .allowCredentials(true);
+                        .allowCredentials(false);
             }
         };
     }
