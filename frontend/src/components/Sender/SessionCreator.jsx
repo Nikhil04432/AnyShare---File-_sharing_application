@@ -11,9 +11,7 @@ const SessionCreator = () => {
     // If there's already a session, reset first
     if (session.sessionId) {
       addLog('Resetting previous session...', 'warning');
-      reset(); // Clear everything
-      
-      // Small delay to ensure cleanup completes
+      reset();
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
@@ -21,18 +19,21 @@ const SessionCreator = () => {
     addLog('Creating new session...', 'info');
 
     try {
-      const data = await createSession();
-      
-      addLog(`Session created: ${data.sessionId}`, 'success');
-      
+      // Step 1: Create session
+      const createData = await createSession();
+      addLog(`✅ Session created: ${createData.sessionId}`, 'success');
+
       setSession({
-        sessionId: data.sessionId,
-        roomCode: data.roomCode,
-        expiresAt: data.expiresAt,
+        sessionId: createData.sessionId,
+        roomCode: createData.roomCode,
+        expiresAt: createData.expiresAt,
       });
 
-      // Now sender needs to join their own session
-      const joinResponse = await fetch(`http://localhost:8080/api/v1/sessions/${data.roomCode}/join`, {
+      // Step 2: Sender joins their own session
+      addLog('Joining session as sender...', 'info');
+
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+      const joinResponse = await fetch(`${apiBaseUrl}/sessions/${createData.roomCode}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -41,17 +42,23 @@ const SessionCreator = () => {
         }),
       });
 
+      if (!joinResponse.ok) {
+        const errorData = await joinResponse.json();
+        throw new Error(errorData.errorMessage || 'Failed to join session');
+      }
+
       const joinData = await joinResponse.json();
-      
-      addLog(`Joined as ${joinData.peerId}`, 'success');
-      
+      addLog(`✅ Joined as ${joinData.peerId}`, 'success');
+
+      // Step 3: Update session with peer info and token
       setSession({
         peerId: joinData.peerId,
         token: joinData.token,
       });
 
     } catch (error) {
-      addLog(`Error creating session: ${error.message}`, 'error');
+      addLog(`❌ Error: ${error.message}`, 'error');
+      console.error('Session creation error:', error);
     } finally {
       setLoading(false);
     }
