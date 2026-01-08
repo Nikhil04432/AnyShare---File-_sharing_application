@@ -1,11 +1,5 @@
 // frontend/src/utils/constants.js
 
-// OLD (Only STUN - doesn't work with restrictive NATs)
-export const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
-
 // NEW (STUN + TURN - works everywhere!)
 export const ICE_SERVERS = [
   // STUN servers (for NAT discovery)
