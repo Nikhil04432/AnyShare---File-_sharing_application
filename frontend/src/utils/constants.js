@@ -10,6 +10,7 @@ export const CHUNK_SIZE = 64 * 1024; // Increase from 64KB to 256KB
 //export const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 
 // WebRTC Configuration
+// NEW (STUN + TURN - works everywhere!)
 export const ICE_SERVERS = [
   // STUN servers (for NAT discovery)
   { urls: 'stun:stun.l.google.com:19302' },
@@ -45,5 +46,13 @@ export const MESSAGE_TYPES = {
   PEER_DISCONNECTED: 'PEER_DISCONNECTED',
   ERROR: 'ERROR',
   FILE_METADATA: 'FILE_METADATA',
+  FILE_COMPLETE: 'FILE_COMPLETE',
+};
+
+// Connection States
+export const CONNECTION_STATE = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
   ERROR: 'error',
 };
