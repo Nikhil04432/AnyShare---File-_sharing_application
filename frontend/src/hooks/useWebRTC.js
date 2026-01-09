@@ -17,7 +17,7 @@ export const useWebRTC = (sendMessage) => {
   const peerConnectionRef = useRef(null);
 
   /**
-   * Initialize WebRTC Peer Connection
+   * Initialize WebRTC Peer Connection with TURN support
    */
   const initializePeerConnection = useCallback(() => {
     if (peerConnectionRef.current) {
@@ -27,44 +27,53 @@ export const useWebRTC = (sendMessage) => {
 
     addLog('Creating WebRTC peer connection...', 'info');
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    // CRITICAL: Configure with TURN servers
+    const pc = new RTCPeerConnection({
+      iceServers: ICE_SERVERS,
+      iceCandidatePoolSize: 10, // Gather more candidates
+      iceTransportPolicy: 'all' // Use TURN if needed
+    });
 
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate && remotePeer) {
-        addLog('Sending ICE candidate', 'info');
+        addLog(`Sending ICE candidate (${event.candidate.type})`, 'info');
         sendMessage({
           type: MESSAGE_TYPES.ICE_CANDIDATE,
           targetId: remotePeer.peerId,
           payload: event.candidate,
         });
+      } else if (!event.candidate) {
+        addLog('ICE gathering complete', 'info');
       }
     };
 
-    // FIXED: Enhanced connection state monitoring
+    // Monitor ICE gathering state
+    pc.onicegatheringstatechange = () => {
+      addLog(`ICE gathering state: ${pc.iceGatheringState}`, 'info');
+    };
+
+    // Monitor connection state
     pc.onconnectionstatechange = () => {
       addLog(`Connection state: ${pc.connectionState}`, 'info');
-      
+
       if (pc.connectionState === 'connected') {
         addLog('✅ WebRTC peer connection established!', 'success');
       } else if (pc.connectionState === 'disconnected') {
         addLog('⚠️ WebRTC peer connection disconnected', 'warning');
-        
-        // CRITICAL: Close data channel when peer disconnects
+
         if (dataChannel) {
           addLog('Closing data channel due to disconnection', 'warning');
           setDataChannel(null);
         }
       } else if (pc.connectionState === 'failed') {
         addLog('❌ WebRTC peer connection failed', 'error');
-        
-        // CRITICAL: Clean up on connection failure
+
         if (dataChannel) {
           addLog('Closing data channel due to connection failure', 'error');
           setDataChannel(null);
         }
-        
-        // Optionally clear remote peer
+
         addLog('Clearing remote peer due to connection failure', 'warning');
         setRemotePeer(null);
       }
@@ -73,8 +82,7 @@ export const useWebRTC = (sendMessage) => {
     // Monitor ICE connection state
     pc.oniceconnectionstatechange = () => {
       addLog(`ICE connection state: ${pc.iceConnectionState}`, 'info');
-      
-      // ADDED: Handle ICE connection failures
+
       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
         addLog('ICE connection issue detected', 'warning');
       }
@@ -87,7 +95,7 @@ export const useWebRTC = (sendMessage) => {
   }, [remotePeer, sendMessage, setPeerConnection, setDataChannel, setRemotePeer, addLog]);
 
   /**
-   * Create WebRTC Offer (Sender side)
+   * Create WebRTC Offer (Sender side) - FIXED
    */
   const createOffer = useCallback(async () => {
     try {
@@ -96,7 +104,7 @@ export const useWebRTC = (sendMessage) => {
 
       const pc = initializePeerConnection();
 
-      // Create data channel for file transfer with optimized settings
+      // Create data channel
       addLog('Creating data channel...', 'info');
       const dc = pc.createDataChannel('fileTransfer', {
         ordered: true,
@@ -104,21 +112,42 @@ export const useWebRTC = (sendMessage) => {
 
       setupDataChannel(dc);
 
-      // Create offer
+      // CRITICAL: Wait for ICE gathering to complete
       addLog('Creating WebRTC offer...', 'info');
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false
+      });
 
+      await pc.setLocalDescription(offer);
       addLog(`Local description set. Type: ${offer.type}`, 'success');
+
+      // Wait for ICE gathering to complete (important for TURN)
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') {
+          resolve();
+        } else {
+          const checkState = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', checkState);
+              resolve();
+            }
+          };
+          pc.addEventListener('icegatheringstatechange', checkState);
+
+          // Timeout after 5 seconds
+          setTimeout(resolve, 5000);
+        }
+      });
 
       if (!remotePeer) {
         addLog('ERROR: No remote peer available to send offer!', 'error');
         return;
       }
 
-      // Send offer via WebSocket
+      // Send complete offer with all ICE candidates
       addLog(`Sending OFFER to ${remotePeer.peerId}`, 'info');
-      
+
       const success = sendMessage({
         type: MESSAGE_TYPES.OFFER,
         targetId: remotePeer.peerId,
@@ -159,7 +188,23 @@ export const useWebRTC = (sendMessage) => {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      // Send answer via WebSocket
+      // Wait for ICE gathering
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') {
+          resolve();
+        } else {
+          const checkState = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', checkState);
+              resolve();
+            }
+          };
+          pc.addEventListener('icegatheringstatechange', checkState);
+          setTimeout(resolve, 5000);
+        }
+      });
+
+      // Send answer
       addLog('Sending answer to sender...', 'info');
       sendMessage({
         type: MESSAGE_TYPES.ANSWER,
@@ -177,7 +222,7 @@ export const useWebRTC = (sendMessage) => {
   const handleAnswer = useCallback(async (answer) => {
     try {
       const pc = peerConnectionRef.current;
-      
+
       if (!pc) {
         addLog('No peer connection to set answer', 'error');
         return;
@@ -197,7 +242,7 @@ export const useWebRTC = (sendMessage) => {
   const handleIceCandidate = useCallback(async (candidate) => {
     try {
       const pc = peerConnectionRef.current;
-      
+
       if (!pc) {
         addLog('No peer connection to add ICE candidate', 'error');
         return;
@@ -211,7 +256,7 @@ export const useWebRTC = (sendMessage) => {
   }, [addLog]);
 
   /**
-   * Setup Data Channel event handlers - FIXED
+   * Setup Data Channel event handlers
    */
   const setupDataChannel = useCallback((dc) => {
     dc.onopen = () => {
@@ -230,7 +275,6 @@ export const useWebRTC = (sendMessage) => {
       setDataChannel(null);
     };
 
-    // File transfer will be handled by useFileTransfer hook
     dc.onmessage = (event) => {
       window.dispatchEvent(new CustomEvent('data-channel-message', {
         detail: event.data,

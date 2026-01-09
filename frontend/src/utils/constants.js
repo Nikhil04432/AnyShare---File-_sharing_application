@@ -12,11 +12,14 @@ export const CHUNK_SIZE = 64 * 1024; // Increase from 64KB to 256KB
 // WebRTC Configuration
 // NEW (STUN + TURN - works everywhere!)
 export const ICE_SERVERS = [
-  // STUN servers (for NAT discovery)
+  // STUN servers (discover public IP)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
 
-  // FREE TURN servers (for relay when P2P fails)
+  // TURN servers (relay when direct connection fails)
   {
     urls: 'turn:openrelay.metered.ca:80',
     username: 'openrelayproject',
@@ -29,6 +32,11 @@ export const ICE_SERVERS = [
   },
   {
     urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turns:openrelay.metered.ca:443?transport=tcp',
     username: 'openrelayproject',
     credential: 'openrelayproject'
   }
